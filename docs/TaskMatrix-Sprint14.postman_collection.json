@@ -1,0 +1,42 @@
+{
+  "info": {
+    "name": "TaskMatrix Sprint 14 Authentication",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000/api" },
+    { "key": "token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Register",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Harmanpreet Singh\",\n  \"email\": \"harmanpreet@example.com\",\n  \"password\": \"SecurePass123!\"\n}" },
+        "url": "{{baseUrl}}/auth/register"
+      }
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"harmanpreet@example.com\",\n  \"password\": \"SecurePass123!\"\n}" },
+        "url": "{{baseUrl}}/auth/login"
+      }
+    },
+    {
+      "name": "Protected Tasks",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/tasks"
+      }
+    },
+    {
+      "name": "Protected Tasks Without Token (401 Proof)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/tasks" }
+    }
+  ]
+}

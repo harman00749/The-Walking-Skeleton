@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+node_modules/
+.npm-cache/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+.vercel/
+.DS_Store
+Thumbs.db
