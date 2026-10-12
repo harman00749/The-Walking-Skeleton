@@ -1,18 +1,14 @@
 import { Router } from "express";
+import { createTask, deleteTask, getTask, listTasks, updateTask } from "../controllers/task.controller.js";
 import { requireAuth } from "../middleware/auth.js";
-import { sendSuccess } from "../utils/responses.js";
+import { validateBody } from "../middleware/validate.js";
+import { createTaskSchema, updateTaskSchema } from "../schemas/task.schema.js";
 
 export const taskRouter = Router();
 
 taskRouter.use(requireAuth);
-
-taskRouter.get("/", (request, response) => {
-  sendSuccess(response, 200, {
-    tasks: [
-      { id: "TM-14", title: "Secure the authentication pipeline", status: "In progress", priority: "High" },
-      { id: "TM-15", title: "Connect the protected dashboard", status: "To do", priority: "Medium" },
-      { id: "TM-16", title: "Verify the production deployment", status: "To do", priority: "High" },
-    ],
-    authenticatedUserId: request.auth?.userId,
-  });
-});
+taskRouter.get("/", listTasks);
+taskRouter.post("/", validateBody(createTaskSchema), createTask);
+taskRouter.get("/:id", getTask);
+taskRouter.put("/:id", validateBody(updateTaskSchema), updateTask);
+taskRouter.delete("/:id", deleteTask);

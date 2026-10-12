@@ -1,0 +1,96 @@
+{
+  "info": {
+    "name": "TaskMatrix Sprint 15 — Secure CRUD & Stripe",
+    "description": "Run Login first to store a JWT. Create Task stores taskId for subsequent owner-protected requests. To prove 403 ownership, create a second user/token and call the single-task requests with the first user's taskId.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000/api" },
+    { "key": "email", "value": "sprint15@example.com" },
+    { "key": "password", "value": "Demo@12345" },
+    { "key": "token", "value": "" },
+    { "key": "taskId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sprint Fifteen Demo\",\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}" },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "Login",
+          "event": [{ "listen": "test", "script": { "exec": ["const body = pm.response.json();", "if (body.data?.token) pm.collectionVariables.set('token', body.data.token);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}" },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tasks — JWT & Owner Protected",
+      "item": [
+        {
+          "name": "Create Task",
+          "event": [{ "listen": "test", "script": { "exec": ["const body = pm.response.json();", "if (body.data?.task?.id) pm.collectionVariables.set('taskId', body.data.task.id);"] } }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Complete Sprint 15 CRUD\",\n  \"description\": \"Verify the full owner-protected data lifecycle.\",\n  \"status\": \"todo\",\n  \"priority\": \"high\",\n  \"dueDate\": \"2026-10-18\"\n}" },
+            "url": "{{baseUrl}}/tasks"
+          }
+        },
+        {
+          "name": "List My Tasks",
+          "request": { "method": "GET", "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] }, "url": "{{baseUrl}}/tasks" }
+        },
+        {
+          "name": "Get Owned Task",
+          "request": { "method": "GET", "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] }, "url": "{{baseUrl}}/tasks/{{taskId}}" }
+        },
+        {
+          "name": "Update Owned Task",
+          "request": {
+            "method": "PUT",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Sprint 15 CRUD verified\",\n  \"status\": \"done\",\n  \"priority\": \"medium\"\n}" },
+            "url": "{{baseUrl}}/tasks/{{taskId}}"
+          }
+        },
+        {
+          "name": "Reject Owner Injection (400)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Invalid ownership payload\",\n  \"authorId\": \"000000000000000000000000\"\n}" },
+            "url": "{{baseUrl}}/tasks"
+          }
+        },
+        {
+          "name": "Delete Owned Task",
+          "request": { "method": "DELETE", "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] }, "url": "{{baseUrl}}/tasks/{{taskId}}" }
+        }
+      ]
+    },
+    {
+      "name": "Stripe Test Checkout",
+      "request": { "method": "POST", "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] }, "url": "{{baseUrl}}/payments/create-checkout-session" }
+    }
+  ]
+}

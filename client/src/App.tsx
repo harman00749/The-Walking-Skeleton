@@ -1,10 +1,26 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { getCurrentUser, getTasks, loginAccount, registerAccount, type Task } from "./api";
+import { Link, Navigate, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  createCheckoutSession,
+  createTask,
+  deleteTask,
+  getCheckoutSession,
+  getCurrentUser,
+  getTasks,
+  loginAccount,
+  registerAccount,
+  updateTask,
+  type Task,
+  type TaskInput,
+  type User,
+} from "./api";
 import { clearToken, hasValidToken, saveToken } from "./auth";
 
 type AuthMode = "login" | "register";
 type DashboardView = "overview" | "tasks" | "team";
+type Toast = { type: "success" | "error"; message: string };
+
+const statusLabels = { todo: "To do", "in-progress": "In progress", done: "Done" } as const;
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   return hasValidToken() ? children : <Navigate to="/login" replace />;
@@ -42,14 +58,14 @@ function AuthPage({ mode }: { mode: AuthMode }) {
     <main className="auth-shell">
       <section className="auth-story">
         <Link className="brand" to="/"><span>T</span>TaskMatrix</Link>
-        <div><p className="eyebrow">SPRINT 14 · WALKING SKELETON</p><h1>Secure access for focused software teams.</h1><p>Register, authenticate, and enter a protected workspace through one connected full-stack pipeline.</p></div>
-        <small>Passwords are salted and hashed before MongoDB persistence.</small>
+        <div><p className="eyebrow">SPRINT 15 · FEATURE COMPLETE</p><h1>Own every task from idea to done.</h1><p>Secure authentication, owner-scoped CRUD, optimistic interactions, and a Stripe Test Mode upgrade in one deployed pipeline.</p></div>
+        <small>Passwords are hashed, tasks are owner-scoped, and payments stay on Stripe-hosted Checkout.</small>
       </section>
       <section className="auth-panel">
         <form onSubmit={submit}>
           <p className="eyebrow">SECURE WORKSPACE</p>
           <h2>{isRegister ? "Create your account" : "Welcome back"}</h2>
-          <p className="form-intro">{isRegister ? "Start your protected TaskMatrix workspace." : "Sign in to continue to your dashboard."}</p>
+          <p className="form-intro">{isRegister ? "Start your private TaskMatrix workspace." : "Sign in to manage your tasks."}</p>
           {error && <div className="error" role="alert">{error}</div>}
           {isRegister && <label>Full name<input autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} minLength={2} required placeholder="Harmanpreet Singh" /></label>}
           <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required placeholder="you@example.com" /></label>
@@ -62,36 +78,96 @@ function AuthPage({ mode }: { mode: AuthMode }) {
   );
 }
 
-function TaskTable({ tasks }: { tasks: Task[] }) {
+function TaskTable({ tasks, onEdit, onDelete }: { tasks: Task[]; onEdit?: (task: Task) => void; onDelete?: (task: Task) => void }) {
+  const interactive = Boolean(onEdit && onDelete);
   return (
     <div className="task-table">
-      <div className="table-head"><span>Task</span><span>Status</span><span>Priority</span></div>
+      <div className={`table-head ${interactive ? "with-actions" : ""}`}><span>Task</span><span>Status</span><span>Priority</span><span>Due</span>{interactive && <span>Actions</span>}</div>
       {tasks.map((task) => (
-        <article key={task.id}>
-          <div><b>{task.id}</b><strong>{task.title}</strong></div>
-          <span>{task.status}</span>
-          <span className={`priority priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
+        <article className={interactive ? "with-actions" : ""} key={task.id}>
+          <div><b>TM-{task.id.slice(-5).toUpperCase()}</b><strong>{task.title}</strong><small>{task.description || "No description"}</small></div>
+          <span className={`status status-${task.status}`}>{statusLabels[task.status]}</span>
+          <span className={`priority priority-${task.priority}`}>{task.priority}</span>
+          <span>{task.dueDate ? new Date(`${task.dueDate}T00:00:00`).toLocaleDateString() : "—"}</span>
+          {interactive && <div className="task-actions"><button onClick={() => onEdit?.(task)}>Edit</button><button className="danger" onClick={() => onDelete?.(task)}>Delete</button></div>}
         </article>
       ))}
     </div>
   );
 }
 
+function TaskModal({ task, onClose, onSaved }: { task: Task | null; onClose: () => void; onSaved: (task: Task) => void }) {
+  const [title, setTitle] = useState(task?.title ?? "");
+  const [description, setDescription] = useState(task?.description ?? "");
+  const [status, setStatus] = useState<TaskInput["status"]>(task?.status ?? "todo");
+  const [priority, setPriority] = useState<TaskInput["priority"]>(task?.priority ?? "medium");
+  const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+    const input: TaskInput = { title, description, status, priority, dueDate: dueDate || null };
+    try {
+      const result = task ? await updateTask(task.id, input) : await createTask(input);
+      onSaved(result.task);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The task could not be saved.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="task-modal" role="dialog" aria-modal="true" aria-labelledby="task-form-title">
+        <div className="modal-heading"><div><p className="eyebrow">{task ? "UPDATE RECORD" : "CREATE RECORD"}</p><h2 id="task-form-title">{task ? "Edit task" : "Add a task"}</h2></div><button aria-label="Close task form" onClick={onClose}>×</button></div>
+        <form onSubmit={submit}>
+          {error && <div className="error" role="alert">{error}</div>}
+          <label>Task title<input value={title} onChange={(event) => setTitle(event.target.value)} minLength={2} maxLength={120} required autoFocus placeholder="Ship the Sprint 15 CRUD flow" /></label>
+          <label>Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={1000} rows={4} placeholder="Add clear acceptance criteria…" /></label>
+          <div className="form-grid">
+            <label>Status<select value={status} onChange={(event) => setStatus(event.target.value as TaskInput["status"])}><option value="todo">To do</option><option value="in-progress">In progress</option><option value="done">Done</option></select></label>
+            <label>Priority<select value={priority} onChange={(event) => setPriority(event.target.value as TaskInput["priority"])}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+          </div>
+          <label>Due date<input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></label>
+          <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary compact" disabled={loading}>{loading ? "Saving…" : task ? "Save changes" : "Create task"}</button></div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function EmptyTasks({ onAdd }: { onAdd: () => void }) {
+  return <div className="empty-state"><span>✓</span><h3>Your workspace is clear</h3><p>Create your first owner-protected task to start the sprint.</p><button className="primary compact" onClick={onAdd}>Add first task</button></div>;
+}
+
 function Dashboard() {
   const navigate = useNavigate();
-  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeView, setActiveView] = useState<DashboardView>("overview");
+  const [modalTask, setModalTask] = useState<Task | "new" | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+
+  function showToast(nextToast: Toast) {
+    setToast(nextToast);
+    window.setTimeout(() => setToast(null), 3200);
+  }
 
   useEffect(() => {
     Promise.all([getCurrentUser(), getTasks()])
       .then(([profile, taskData]) => { setUser(profile.user); setTasks(taskData.tasks); })
       .catch((caught) => {
-        clearToken();
-        setError(caught instanceof Error ? caught.message : "Your session expired.");
-        window.setTimeout(() => navigate("/login", { replace: true }), 900);
-      });
+        if (!hasValidToken()) navigate("/login", { replace: true });
+        else setError(caught instanceof Error ? caught.message : "The workspace could not be loaded.");
+      })
+      .finally(() => setLoading(false));
   }, [navigate]);
 
   function logout() {
@@ -99,12 +175,39 @@ function Dashboard() {
     navigate("/login", { replace: true });
   }
 
-  const initials = user?.name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "TM";
+  function handleSaved(savedTask: Task) {
+    setTasks((current) => current.some((task) => task.id === savedTask.id)
+      ? current.map((task) => task.id === savedTask.id ? savedTask : task)
+      : [savedTask, ...current]);
+    setModalTask(null);
+    showToast({ type: "success", message: `Task ${tasks.some((task) => task.id === savedTask.id) ? "updated" : "created"} successfully.` });
+  }
+
+  async function handleDelete(taskToDelete: Task) {
+    const snapshot = tasks;
+    setTasks((current) => current.filter((task) => task.id !== taskToDelete.id));
+    showToast({ type: "success", message: `“${taskToDelete.title}” removed.` });
+    try {
+      await deleteTask(taskToDelete.id);
+    } catch (caught) {
+      setTasks(snapshot);
+      showToast({ type: "error", message: caught instanceof Error ? caught.message : "Delete failed; the task was restored." });
+    }
+  }
+
+  async function startCheckout() {
+    setCheckoutLoading(true);
+    try {
+      const checkout = await createCheckoutSession();
+      window.location.assign(checkout.url);
+    } catch (caught) {
+      showToast({ type: "error", message: caught instanceof Error ? caught.message : "Checkout could not be started." });
+      setCheckoutLoading(false);
+    }
+  }
+
+  const initials = user?.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "TM";
+  const completedTasks = tasks.filter((task) => task.status === "done").length;
 
   return (
     <div className="dashboard-shell">
@@ -115,45 +218,68 @@ function Dashboard() {
           <button className={activeView === "tasks" ? "active" : ""} onClick={() => setActiveView("tasks")}>My tasks</button>
           <button className={activeView === "team" ? "active" : ""} onClick={() => setActiveView("team")}>Team</button>
         </nav>
-        <div className="security-note"><i />JWT protected session</div>
+        <div className="security-note"><i />JWT + owner protected</div>
       </aside>
       <main>
-        <header><div><p>Protected workspace</p><strong>{user?.email || "Verifying session…"}</strong></div><button onClick={logout}>Log out</button></header>
+        <header><div><p>Protected workspace</p><strong>{user?.email || "Verifying session…"}</strong></div><div className="header-actions"><button className="upgrade" onClick={startCheckout} disabled={checkoutLoading}>{checkoutLoading ? "Opening…" : "Upgrade to Pro"}</button><button onClick={logout}>Log out</button></div></header>
         <section className="dashboard-content">
-          {error ? <div className="error">{error}</div> : (
+          {loading ? <div className="loading-state"><i /><p>Loading your private workspace…</p></div> : error ? <div className="error workspace-error">{error}<button onClick={() => window.location.reload()}>Retry</button></div> : (
             <div className="view-content">
-              {activeView === "overview" && (
-                <>
-                  <div className="page-heading"><div><p className="eyebrow">AUTHENTICATED DASHBOARD</p><h1>Welcome, {user?.name || "team member"}</h1><p>Your JWT was verified before protected workspace data was returned.</p></div><span className="auth-badge">Session verified</span></div>
-                  <div className="metrics"><article><span>Active sprint</span><strong>14</strong><small>Walking Skeleton</small></article><article><span>Protected tasks</span><strong>{tasks.length}</strong><small>JWT-gated records</small></article><article><span>Auth pipeline</span><strong>Connected</strong><small>React → Express → MongoDB</small></article></div>
-                  <section className="content-panel"><div className="panel-heading"><div><h2>Sprint priorities</h2><p>Protected data returned from the authenticated API.</p></div><button onClick={() => setActiveView("tasks")}>View all tasks</button></div><TaskTable tasks={tasks} /></section>
-                </>
-              )}
+              {activeView === "overview" && <>
+                <div className="page-heading"><div><p className="eyebrow">SPRINT 15 · FEATURE COMPLETE</p><h1>Welcome, {user?.name || "team member"}</h1><p>Every task below is persisted in MongoDB and scoped to your JWT identity.</p></div><span className="auth-badge">Ownership verified</span></div>
+                <div className="metrics"><article><span>Total tasks</span><strong>{tasks.length}</strong><small>Owner-scoped records</small></article><article><span>Completed</span><strong>{completedTasks}</strong><small>{tasks.length ? `${Math.round((completedTasks / tasks.length) * 100)}% completion` : "Ready to begin"}</small></article><article><span>Data pipeline</span><strong>Connected</strong><small>React → Express → MongoDB</small></article></div>
+                <section className="content-panel"><div className="panel-heading"><div><h2>Recent tasks</h2><p>Live data from the protected REST API.</p></div><button onClick={() => setActiveView("tasks")}>Manage tasks</button></div>{tasks.length ? <TaskTable tasks={tasks.slice(0, 5)} /> : <EmptyTasks onAdd={() => { setActiveView("tasks"); setModalTask("new"); }} />}</section>
+              </>}
 
-              {activeView === "tasks" && (
-                <>
-                  <div className="page-heading"><div><p className="eyebrow">PROTECTED DATA</p><h1>My tasks</h1><p>These records are available only after JWT verification.</p></div><span className="count-badge">{tasks.length} tasks</span></div>
-                  <section className="content-panel"><TaskTable tasks={tasks} /></section>
-                </>
-              )}
+              {activeView === "tasks" && <>
+                <div className="page-heading"><div><p className="eyebrow">SECURE CRUD</p><h1>My tasks</h1><p>Create, read, update, and optimistically delete records you own.</p></div><button className="primary compact" onClick={() => setModalTask("new")}>+ Add task</button></div>
+                <section className="content-panel task-panel">{tasks.length ? <TaskTable tasks={tasks} onEdit={setModalTask} onDelete={handleDelete} /> : <EmptyTasks onAdd={() => setModalTask("new")} />}</section>
+              </>}
 
-              {activeView === "team" && (
-                <>
-                  <div className="page-heading"><div><p className="eyebrow">WORKSPACE ACCESS</p><h1>Team</h1><p>Authenticated members with access to this protected workspace.</p></div></div>
-                  <div className="team-grid">
-                    <article className="member-card"><div className="member-avatar">{initials}</div><div><strong>{user?.name || "Workspace member"}</strong><span>{user?.email}</span></div><b>Workspace admin</b></article>
-                    <article className="invite-card"><span>+</span><div><strong>Walking Skeleton workspace</strong><p>Member invitations will be introduced after the authentication MVP.</p></div></article>
-                  </div>
-                </>
-              )}
+              {activeView === "team" && <>
+                <div className="page-heading"><div><p className="eyebrow">WORKSPACE ACCESS</p><h1>Team</h1><p>JWT identity controls who can access each task document.</p></div></div>
+                <div className="team-grid"><article className="member-card"><div className="member-avatar">{initials}</div><div><strong>{user?.name || "Workspace member"}</strong><span>{user?.email}</span></div><b>Task owner</b></article><article className="pro-card"><p className="eyebrow">STRIPE TEST MODE</p><h3>TaskMatrix Pro</h3><p>Demonstrate the secure server-side Checkout pipeline with a test transaction.</p><button className="primary compact" onClick={startCheckout} disabled={checkoutLoading}>{checkoutLoading ? "Opening Checkout…" : "Upgrade for $9"}</button></article></div>
+              </>}
             </div>
           )}
         </section>
       </main>
+      {modalTask && <TaskModal task={modalTask === "new" ? null : modalTask} onClose={() => setModalTask(null)} onSaved={handleSaved} />}
+      {toast && <div className={`toast toast-${toast.type}`} role="status">{toast.message}</div>}
     </div>
   );
 }
 
+function PaymentSuccess() {
+  const [searchParams] = useSearchParams();
+  const [state, setState] = useState<{ loading: boolean; paid: boolean; message: string }>({ loading: true, paid: false, message: "Verifying your Stripe Checkout session…" });
+
+  useEffect(() => {
+    const sessionId = searchParams.get("session_id");
+    if (!sessionId) {
+      setState({ loading: false, paid: false, message: "The checkout session ID is missing." });
+      return;
+    }
+    getCheckoutSession(sessionId)
+      .then(({ session }) => setState({ loading: false, paid: session.paymentStatus === "paid", message: session.paymentStatus === "paid" ? "Test payment verified successfully." : `Payment status: ${session.paymentStatus}` }))
+      .catch((caught) => setState({ loading: false, paid: false, message: caught instanceof Error ? caught.message : "Checkout verification failed." }));
+  }, [searchParams]);
+
+  return <main className="payment-shell"><section className="payment-card"><Link className="brand" to="/dashboard"><span>T</span>TaskMatrix</Link><div className={`payment-icon ${state.paid ? "paid" : ""}`}>{state.loading ? "…" : state.paid ? "✓" : "!"}</div><p className="eyebrow">STRIPE TEST MODE</p><h1>{state.loading ? "Verifying payment" : state.paid ? "Welcome to Pro" : "Payment not verified"}</h1><p>{state.message}</p><Link className="button-link" to="/dashboard">Return to dashboard</Link></section></main>;
+}
+
+function PaymentCancelled() {
+  return <main className="payment-shell"><section className="payment-card"><Link className="brand" to="/dashboard"><span>T</span>TaskMatrix</Link><div className="payment-icon">×</div><p className="eyebrow">CHECKOUT CANCELLED</p><h1>No payment was made</h1><p>Your workspace is unchanged. You can restart the Stripe Test Mode checkout whenever you are ready.</p><Link className="button-link" to="/dashboard">Return to dashboard</Link></section></main>;
+}
+
 export default function App() {
-  return <Routes><Route path="/" element={<Navigate to={hasValidToken() ? "/dashboard" : "/login"} replace />} /><Route path="/login" element={<AuthPage mode="login" />} /><Route path="/register" element={<AuthPage mode="register" />} /><Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes>;
+  return <Routes>
+    <Route path="/" element={<Navigate to={hasValidToken() ? "/dashboard" : "/login"} replace />} />
+    <Route path="/login" element={<AuthPage mode="login" />} />
+    <Route path="/register" element={<AuthPage mode="register" />} />
+    <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+    <Route path="/payment-success" element={<ProtectedRoute><PaymentSuccess /></ProtectedRoute>} />
+    <Route path="/payment-cancelled" element={<ProtectedRoute><PaymentCancelled /></ProtectedRoute>} />
+    <Route path="*" element={<Navigate to="/" replace />} />
+  </Routes>;
 }

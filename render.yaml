@@ -17,3 +17,5 @@ services:
         sync: false
       - key: JWT_EXPIRES_IN
         value: 1d
+      - key: STRIPE_SECRET_KEY
+        sync: false

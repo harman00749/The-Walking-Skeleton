@@ -7,6 +7,10 @@ const envSchema = z.object({
   CLIENT_ORIGIN: z.string().url().default("http://localhost:5173"),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must contain at least 32 characters."),
   JWT_EXPIRES_IN: z.string().default("1d"),
+  STRIPE_SECRET_KEY: z.preprocess(
+    (value) => value === "" ? undefined : value,
+    z.string().startsWith("sk_test_", "STRIPE_SECRET_KEY must be a Stripe Test Mode secret key.").optional(),
+  ),
 });
 
 export type Environment = z.infer<typeof envSchema>;
