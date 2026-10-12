@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: taskmatrix-sprint14-api
+    name: the-walking-skeleton
     runtime: node
     plan: free
     buildCommand: npm install --include=dev && npm run build --workspace server
