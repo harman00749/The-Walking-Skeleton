@@ -9,7 +9,7 @@ async function start(): Promise<void> {
   try {
     await connectDatabase();
     const server = createServer(createApp());
-    server.listen(PORT, () => console.info(`TaskMatrix Sprint 14 API listening on port ${PORT}.`));
+    server.listen(PORT, () => console.info(`TaskMatrix Sprint 16 API listening on port ${PORT}.`));
 
     const shutdown = (signal: string) => {
       console.info(`${signal} received. Closing API.`);
@@ -21,9 +21,10 @@ async function start(): Promise<void> {
     process.on("SIGINT", () => shutdown("SIGINT"));
     process.on("SIGTERM", () => shutdown("SIGTERM"));
   } catch (error) {
-    console.error("TaskMatrix Sprint 14 API failed to start.", error);
+    console.error("TaskMatrix Sprint 16 API failed to start.", error);
     process.exit(1);
   }
 }
 
 void start();
+

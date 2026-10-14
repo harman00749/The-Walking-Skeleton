@@ -87,6 +87,13 @@ export function deleteTask(taskId: string) {
   return request<{ deletedTaskId: string }>(`/tasks/${taskId}`, { method: "DELETE" });
 }
 
+export function generateTaskSubsteps(input: { taskTitle: string; taskDescription: string; count?: number }) {
+  return request<{ subtasks: string[] }>("/ai/suggest", {
+    method: "POST",
+    body: JSON.stringify({ ...input, count: input.count ?? 5 }),
+  });
+}
+
 export function createCheckoutSession() {
   return request<{ sessionId: string; url: string }>("/payments/create-checkout-session", { method: "POST" });
 }
@@ -96,3 +103,4 @@ export function getCheckoutSession(sessionId: string) {
     `/payments/sessions/${encodeURIComponent(sessionId)}`,
   );
 }
+

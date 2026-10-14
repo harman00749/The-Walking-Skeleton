@@ -17,5 +17,10 @@ services:
         sync: false
       - key: JWT_EXPIRES_IN
         value: 1d
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
       - key: STRIPE_SECRET_KEY
         sync: false
+

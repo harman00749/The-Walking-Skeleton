@@ -79,3 +79,50 @@ The following queries guided the Feature Complete sprint. Decisions were validat
 **Decision:** Require JWT authentication, rate-limit Checkout creation, validate Session IDs, return sanitized `502/503` errors, keep the Test Mode key optional at server startup, and disable only the payment path when Stripe is not configured.
 
 **Human validation:** Start without `STRIPE_SECRET_KEY` and confirm the rest of the application remains healthy while Checkout returns a structured `503`. Configure a test key and verify hosted Checkout opens successfully.
+
+---
+
+# Sprint 16 AI Architecture Log
+
+The following prompts guided the AI Injection & Polish sprint. AI suggestions were treated as untrusted data and verified through strict schemas, compiler checks, production builds, API tests, and human review.
+
+## Query 10 — Secure AI boundary
+
+**Prompt:** How should TaskMatrix generate AI task sub-steps without exposing the Gemini key or calling an LLM directly from React?
+
+**Decision:** React sends a JWT-authenticated payload to `POST /api/ai/suggest`. Express reads `GEMINI_API_KEY` from its server environment, calls Gemini, validates the structured provider response with Zod, sanitizes every string, and returns only a bounded subtask array. The key never uses a `VITE_` variable and never enters the browser bundle.
+
+**Human validation:** Inspect the browser Network panel and client bundle for secret material, then call the endpoint with a valid token. Confirm only task context is sent and only sanitized sub-steps are returned.
+
+## Query 11 — Malformed AI input and output
+
+**Prompt:** What validation is required when both the user request and model response are untrusted?
+
+**Decision:** Apply a strict request schema with bounded title, description, and count values before the provider call. Require a JSON object containing three to eight short strings from the provider, remove control characters and list prefixes, deduplicate results, cap string length, and reject incomplete or malformed results with sanitized `502` errors.
+
+**Human validation:** In Postman send an empty title, extra unknown field, count outside the range, and invalid JSON. Confirm structured `400` responses and no Gemini call. Mock malformed provider JSON and confirm a sanitized `502` without raw provider details.
+
+## Query 12 — AI token-spam protection
+
+**Prompt:** How should an authenticated AI endpoint be throttled to reduce automated token abuse while remaining demonstrable?
+
+**Decision:** Require JWT authentication and limit the AI endpoint to five requests per IP per minute. Rate-limit failed login attempts to five per 15 minutes, use standard rate-limit headers, and return consistent `429` JSON structures.
+
+**Human validation:** Call `/api/ai/suggest` six times inside one minute and confirm the sixth request returns `429 AI_RATE_LIMITED`. Submit repeated invalid logins and confirm `429 LOGIN_RATE_LIMITED` without server failure.
+
+## Query 13 — Code Freeze compliance
+
+**Prompt:** How can AI planning be added without introducing a new macro-feature or MongoDB collection?
+
+**Decision:** Generate ephemeral suggestions for existing Task records and expose copy-to-checklist UX. Reuse the existing JWT, Task CRUD pipeline, global response contract, Vercel client, Render API, and `taskmatrix-auth` database. Do not add a collection or change ownership rules.
+
+**Human validation:** Compare Mongoose models before and after Sprint 16. Confirm only `User` and `Task` collections remain and existing CRUD/Stripe flows still work.
+
+## Query 14 — Production sanitization
+
+**Prompt:** What backend data should never reach production logs or API errors?
+
+**Decision:** Never log request bodies, bearer tokens, passwords, MongoDB URIs, Stripe keys, Gemini keys, or raw provider errors. Return stable public error codes/messages and remove all `console.log()` calls from backend source. Retain only minimal startup/shutdown diagnostics through `console.info` and `console.error`.
+
+**Human validation:** Search `server/src` for `console.log`, inspect malformed API responses, and review deployment logs while exercising errors. Confirm no payloads or secrets appear.
+

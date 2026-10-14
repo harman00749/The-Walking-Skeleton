@@ -4,6 +4,7 @@ import {
   createCheckoutSession,
   createTask,
   deleteTask,
+  generateTaskSubsteps,
   getCheckoutSession,
   getCurrentUser,
   getTasks,
@@ -58,8 +59,8 @@ function AuthPage({ mode }: { mode: AuthMode }) {
     <main className="auth-shell">
       <section className="auth-story">
         <Link className="brand" to="/"><span>T</span>TaskMatrix</Link>
-        <div><p className="eyebrow">SPRINT 15 · FEATURE COMPLETE</p><h1>Own every task from idea to done.</h1><p>Secure authentication, owner-scoped CRUD, optimistic interactions, and a Stripe Test Mode upgrade in one deployed pipeline.</p></div>
-        <small>Passwords are hashed, tasks are owner-scoped, and payments stay on Stripe-hosted Checkout.</small>
+        <div><p className="eyebrow">SPRINT 16 · AI INJECTION & POLISH</p><h1>Plan secure work with an AI copilot.</h1><p>Owner-scoped CRUD, server-side Gemini suggestions, strict validation, throttling, and Stripe Test Mode in one hardened pipeline.</p></div>
+        <small>Passwords are hashed, tasks are owner-scoped, and AI/payment secrets stay on the server.</small>
       </section>
       <section className="auth-panel">
         <form onSubmit={submit}>
@@ -78,8 +79,8 @@ function AuthPage({ mode }: { mode: AuthMode }) {
   );
 }
 
-function TaskTable({ tasks, onEdit, onDelete }: { tasks: Task[]; onEdit?: (task: Task) => void; onDelete?: (task: Task) => void }) {
-  const interactive = Boolean(onEdit && onDelete);
+function TaskTable({ tasks, onEdit, onDelete, onAi }: { tasks: Task[]; onEdit?: (task: Task) => void; onDelete?: (task: Task) => void; onAi?: (task: Task) => void }) {
+  const interactive = Boolean(onEdit && onDelete && onAi);
   return (
     <div className="task-table">
       <div className={`table-head ${interactive ? "with-actions" : ""}`}><span>Task</span><span>Status</span><span>Priority</span><span>Due</span>{interactive && <span>Actions</span>}</div>
@@ -89,9 +90,55 @@ function TaskTable({ tasks, onEdit, onDelete }: { tasks: Task[]; onEdit?: (task:
           <span className={`status status-${task.status}`}>{statusLabels[task.status]}</span>
           <span className={`priority priority-${task.priority}`}>{task.priority}</span>
           <span>{task.dueDate ? new Date(`${task.dueDate}T00:00:00`).toLocaleDateString() : "—"}</span>
-          {interactive && <div className="task-actions"><button onClick={() => onEdit?.(task)}>Edit</button><button className="danger" onClick={() => onDelete?.(task)}>Delete</button></div>}
+          {interactive && <div className="task-actions"><button className="ai-action" onClick={() => onAi?.(task)}>✦ AI steps</button><button onClick={() => onEdit?.(task)}>Edit</button><button className="danger" onClick={() => onDelete?.(task)}>Delete</button></div>}
         </article>
       ))}
+    </div>
+  );
+}
+
+function AiSuggestionModal({ task, onClose }: { task: Task; onClose: () => void }) {
+  const [subtasks, setSubtasks] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  async function generate() {
+    setLoading(true);
+    setError("");
+    setCopied(false);
+    try {
+      const result = await generateTaskSubsteps({
+        taskTitle: task.title,
+        taskDescription: task.description,
+        count: 5,
+      });
+      setSubtasks(result.subtasks);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "AI suggestions could not be generated.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function copyChecklist() {
+    try {
+      await navigator.clipboard.writeText(subtasks.map((step) => `☐ ${step}`).join("\n"));
+      setCopied(true);
+    } catch {
+      setError("The checklist could not be copied. Select the text manually instead.");
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="task-modal ai-modal" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title">
+        <div className="modal-heading"><div><p className="eyebrow">SERVER-SIDE GEMINI</p><h2 id="ai-modal-title">Generate task sub-steps</h2></div><button aria-label="Close AI suggestions" onClick={onClose}>×</button></div>
+        <div className="ai-task-context"><span>Protected task</span><strong>{task.title}</strong><p>{task.description || "No description supplied."}</p></div>
+        {error && <div className="error" role="alert">{error}</div>}
+        {loading ? <div className="ai-loading" aria-label="Generating suggestions"><i /><i /><i /><i /><i /><p>Gemini is building a safe implementation plan…</p></div> : subtasks.length ? <ol className="ai-results">{subtasks.map((subtask) => <li key={subtask}><span>✓</span><p>{subtask}</p></li>)}</ol> : <div className="ai-empty"><span>✦</span><h3>Turn this task into an action plan</h3><p>The request runs through the authenticated Express API. Your Gemini key never reaches the browser.</p></div>}
+        <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Close</button>{subtasks.length > 0 && <button type="button" className="secondary ai-copy" onClick={copyChecklist}>{copied ? "Copied ✓" : "Copy checklist"}</button>}<button type="button" className="primary compact" onClick={generate} disabled={loading}>{loading ? "Generating…" : subtasks.length ? "Regenerate" : "Generate 5 steps"}</button></div>
+      </section>
     </div>
   );
 }
@@ -126,7 +173,7 @@ function TaskModal({ task, onClose, onSaved }: { task: Task | null; onClose: () 
         <div className="modal-heading"><div><p className="eyebrow">{task ? "UPDATE RECORD" : "CREATE RECORD"}</p><h2 id="task-form-title">{task ? "Edit task" : "Add a task"}</h2></div><button aria-label="Close task form" onClick={onClose}>×</button></div>
         <form onSubmit={submit}>
           {error && <div className="error" role="alert">{error}</div>}
-          <label>Task title<input value={title} onChange={(event) => setTitle(event.target.value)} minLength={2} maxLength={120} required autoFocus placeholder="Ship the Sprint 15 CRUD flow" /></label>
+          <label>Task title<input value={title} onChange={(event) => setTitle(event.target.value)} minLength={2} maxLength={120} required autoFocus placeholder="Ship the Sprint 16 AI flow" /></label>
           <label>Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={1000} rows={4} placeholder="Add clear acceptance criteria…" /></label>
           <div className="form-grid">
             <label>Status<select value={status} onChange={(event) => setStatus(event.target.value as TaskInput["status"])}><option value="todo">To do</option><option value="in-progress">In progress</option><option value="done">Done</option></select></label>
@@ -152,6 +199,7 @@ function Dashboard() {
   const [error, setError] = useState("");
   const [activeView, setActiveView] = useState<DashboardView>("overview");
   const [modalTask, setModalTask] = useState<Task | "new" | null>(null);
+  const [aiTask, setAiTask] = useState<Task | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
@@ -226,14 +274,14 @@ function Dashboard() {
           {loading ? <div className="loading-state"><i /><p>Loading your private workspace…</p></div> : error ? <div className="error workspace-error">{error}<button onClick={() => window.location.reload()}>Retry</button></div> : (
             <div className="view-content">
               {activeView === "overview" && <>
-                <div className="page-heading"><div><p className="eyebrow">SPRINT 15 · FEATURE COMPLETE</p><h1>Welcome, {user?.name || "team member"}</h1><p>Every task below is persisted in MongoDB and scoped to your JWT identity.</p></div><span className="auth-badge">Ownership verified</span></div>
-                <div className="metrics"><article><span>Total tasks</span><strong>{tasks.length}</strong><small>Owner-scoped records</small></article><article><span>Completed</span><strong>{completedTasks}</strong><small>{tasks.length ? `${Math.round((completedTasks / tasks.length) * 100)}% completion` : "Ready to begin"}</small></article><article><span>Data pipeline</span><strong>Connected</strong><small>React → Express → MongoDB</small></article></div>
+                <div className="page-heading"><div><p className="eyebrow">SPRINT 16 · AI INJECTION & POLISH</p><h1>Welcome, {user?.name || "team member"}</h1><p>Every task is owner-scoped, validated, and ready for secure AI planning.</p></div><span className="auth-badge">API hardened</span></div>
+                <div className="metrics"><article><span>Total tasks</span><strong>{tasks.length}</strong><small>Owner-scoped records</small></article><article><span>Completed</span><strong>{completedTasks}</strong><small>{tasks.length ? `${Math.round((completedTasks / tasks.length) * 100)}% completion` : "Ready to begin"}</small></article><article><span>AI microservice</span><strong>Server-side</strong><small>Gemini key stays in Express</small></article></div>
                 <section className="content-panel"><div className="panel-heading"><div><h2>Recent tasks</h2><p>Live data from the protected REST API.</p></div><button onClick={() => setActiveView("tasks")}>Manage tasks</button></div>{tasks.length ? <TaskTable tasks={tasks.slice(0, 5)} /> : <EmptyTasks onAdd={() => { setActiveView("tasks"); setModalTask("new"); }} />}</section>
               </>}
 
               {activeView === "tasks" && <>
-                <div className="page-heading"><div><p className="eyebrow">SECURE CRUD</p><h1>My tasks</h1><p>Create, read, update, and optimistically delete records you own.</p></div><button className="primary compact" onClick={() => setModalTask("new")}>+ Add task</button></div>
-                <section className="content-panel task-panel">{tasks.length ? <TaskTable tasks={tasks} onEdit={setModalTask} onDelete={handleDelete} /> : <EmptyTasks onAdd={() => setModalTask("new")} />}</section>
+                <div className="page-heading"><div><p className="eyebrow">SECURE CRUD + AI</p><h1>My tasks</h1><p>Manage owner-protected records and generate actionable sub-steps through the server.</p></div><button className="primary compact" onClick={() => setModalTask("new")}>+ Add task</button></div>
+                <section className="content-panel task-panel">{tasks.length ? <TaskTable tasks={tasks} onEdit={setModalTask} onDelete={handleDelete} onAi={setAiTask} /> : <EmptyTasks onAdd={() => setModalTask("new")} />}</section>
               </>}
 
               {activeView === "team" && <>
@@ -245,6 +293,7 @@ function Dashboard() {
         </section>
       </main>
       {modalTask && <TaskModal task={modalTask === "new" ? null : modalTask} onClose={() => setModalTask(null)} onSaved={handleSaved} />}
+      {aiTask && <AiSuggestionModal task={aiTask} onClose={() => setAiTask(null)} />}
       {toast && <div className={`toast toast-${toast.type}`} role="status">{toast.message}</div>}
     </div>
   );
@@ -283,3 +332,4 @@ export default function App() {
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>;
 }
+
