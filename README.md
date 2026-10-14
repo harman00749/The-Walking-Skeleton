@@ -1,4 +1,4 @@
-# TaskMatrix — Sprint 15 Feature Complete
+# TaskMatrix — Sprint 14/15 Feature Complete
 
 TaskMatrix is a deployed Fullstack project-management application that now completes the full task data lifecycle. Authenticated users can create, read, update, and optimistically delete MongoDB task records they own. A server-side Stripe Test Mode Checkout flow provides the Sprint 15 monetization demonstration.
 
