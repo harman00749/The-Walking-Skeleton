@@ -1,4 +1,4 @@
-# TaskMatrix — Sprint 16 AI Injection & Polish
+# TaskMatrix — Sprint 14, 15, 16 & 17 
 
 TaskMatrix is a deployed Fullstack project-management application with secure authentication, owner-scoped MongoDB CRUD, Stripe Test Mode Checkout, and a hardened server-side Gemini microservice. Authenticated users can turn an existing task into five sanitized implementation sub-steps without exposing the AI key to React.
 
